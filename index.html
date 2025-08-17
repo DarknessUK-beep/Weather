@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BA14 Weather & Radar</title>
+<meta name="theme-color" content="#0b132b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous">
+<style>
+  :root { --bg:#0b132b; --card:#1c2541; --muted:#3a506b; --text:#e0e6ef; --accent:#5bc0be; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;background:linear-gradient(180deg,#0b132b,#0f1b3d);color:var(--text)}
+  header{padding:16px 20px;position:sticky;top:0;background:rgba(11,19,43,.7);backdrop-filter:blur(8px);border-bottom:1px solid #223;z-index:20}
+  h1{margin:0;color:#fff;font-size:18px;letter-spacing:.3px}
+  main{max-width:1000px;margin:20px auto;padding:0 16px}
+  nav.tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+  nav .tab{padding:8px 12px;border:1px solid #2a3a62;background:#0f1b3d;border-radius:999px;color:#cfe3ff;cursor:pointer;user-select:none}
+  nav .tab.active{background:#18315e;border-color:#33518a;color:#fff}
+  .card{background:var(--card);border:1px solid #26324f;border-radius:14px;box-shadow:0 10px 24px rgba(0,0,0,.25);overflow:hidden}
+  .card h2{margin:0;padding:14px 16px;border-bottom:1px solid #2b395a;font-size:16px;color:#fff}
+  .content{padding:14px 16px}
+  .grid{display:grid;gap:16px}
+  @media (min-width:800px){ .grid{grid-template-columns: 1.3fr .7fr} }
+  .current{display:flex;gap:14px;align-items:center}
+  .current .temp{font-size:54px;font-weight:700;line-height:1}
+  .muted{color:#b8c3d6}
+  .row{display:flex;gap:16px;flex-wrap:wrap}
+  .pill{background:#0f1b3d;border:1px solid #2a3a62;border-radius:999px;padding:6px 10px;font-size:13px}
+  .hours, .days{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+  .tile{background:#0f1b3d;border:1px solid #29385a;border-radius:12px;padding:10px}
+  .tile h3{margin:0 0 6px 0;font-size:14px;color:#fff}
+  .big-emoji{font-size:42px;line-height:1}
+  .loader{padding:30px;text-align:center;color:#9fb2d8}
+  .error{padding:16px;background:#3b1f2a;border:1px solid #6d2a3d;border-radius:12px;color:#ffd8e4}
+  #map{height:65vh; width:100%; border-radius:12px; border:1px solid #29385a}
+  footer{padding:16px;text-align:center;color:#8fa2bf;font-size:12px}
+  .badge{display:inline-block;margin-left:8px;font-size:12px;background:#0f1b3d;border:1px solid #2a3a62;border-radius:6px;padding:3px 6px}
+  .brand{display:flex;align-items:center;gap:10px}
+  .brand .dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+  .hidden{display:none}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="dot"></div>
+    <h1>BA14 Weather & Radar <span class="badge">Standalone</span></h1>
+  </div>
+</header>
+
+<main>
+  <nav class="tabs">
+    <div class="tab active" data-tab="weather">Weather</div>
+    <div class="tab" data-tab="radar">Radar</div>
+    <div class="tab" data-tab="alerts">Alerts</div>
+  </nav>
+
+  <!-- WEATHER TAB -->
+  <section id="tab-weather">
+    <div id="status" class="loader">Fetching the latest forecast for BA14…</div>
+    <section class="grid" id="app" style="display:none">
+      <div class="card">
+        <h2>Now</h2>
+        <div class="content">
+          <div class="current">
+            <div class="big-emoji" id="now-emoji">⛅️</div>
+            <div>
+              <div class="temp" id="now-temp">--°C</div>
+              <div class="muted" id="now-desc">—</div>
+            </div>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <div class="pill">Feels like <span id="now-feels">—</span>°C</div>
+            <div class="pill">Wind <span id="now-wind">—</span> mph</div>
+            <div class="pill">Humidity <span id="now-hum">—</span>%</div>
+            <div class="pill">Rain prob <span id="now-pop">—</span>% (next hour)</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Today at a glance</h2>
+        <div class="content">
+          <div class="row">
+            <div class="pill">High: <strong id="today-high">—</strong>°C</div>
+            <div class="pill">Low: <strong id="today-low">—</strong>°C</div>
+            <div class="pill">Rain total: <strong id="today-rain">—</strong> mm</div>
+          </div>
+          <div class="hours" id="hours" style="margin-top:12px"></div>
+        </div>
+      </div>
+
+      <div class="card" style="grid-column:1/-1">
+        <h2>7-Day Forecast</h2>
+        <div class="content">
+          <div class="days" id="days"></div>
+        </div>
+      </div>
+    </section>
+  </section>
+
+  <!-- RADAR TAB -->
+  <section id="tab-radar" class="hidden">
+    <div class="card">
+      <h2>Radar (RainViewer)</h2>
+      <div class="content">
+        <div id="map"></div>
+        <div class="muted" style="margin-top:8px">Radar tiles © RainViewer, base map © OpenStreetMap contributors.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ALERTS TAB -->
+  <section id="tab-alerts" class="hidden">
+    <div class="card">
+      <h2>Met Office Severe Weather Warnings</h2>
+      <div class="content" id="alerts-content">
+        <p class="muted">To enable live warnings for BA14, add your Met Office NSWWS Public API key and feed URL in <code>alerts-config.js</code>. If you don't have one yet, see the setup notes below.</p>
+        <ul class="muted">
+          <li>Fallback: you can always check the public warnings map on the Met Office site.</li>
+        </ul>
+        <div id="alerts-list"></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Data: Open-Meteo • Radar: RainViewer • Maps: © OpenStreetMap • Timezone: Europe/London
+</footer>
+
+<script>
+  // Tab logic
+  const tabs = document.querySelectorAll('nav .tab');
+  const sections = {
+    weather: document.getElementById('tab-weather'),
+    radar: document.getElementById('tab-radar'),
+    alerts: document.getElementById('tab-alerts'),
+  };
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    Object.values(sections).forEach(s => s.classList.add('hidden'));
+    sections[t.dataset.tab].classList.remove('hidden');
+    if (t.dataset.tab === 'radar') setTimeout(initMap, 0);
+  }));
+
+  // ----- WEATHER (Open-Meteo) -----
+  const LAT = 51.318, LON = -2.208;
+  const WMO = {
+    0:["☀️","Clear"], 1:["🌤️","Mostly clear"], 2:["⛅️","Partly cloudy"], 3:["☁️","Cloudy"],
+    45:["🌫️","Fog"], 48:["🌫️","Depositing rime fog"],
+    51:["🌦️","Light drizzle"], 53:["🌦️","Drizzle"], 55:["🌧️","Heavy drizzle"],
+    56:["🌧️","Freezing drizzle"], 57:["🌧️","Freezing drizzle"],
+    61:["🌦️","Light rain"], 63:["🌧️","Rain"], 65:["🌧️","Heavy rain"],
+    66:["🌧️","Freezing rain"], 67:["🌧️","Freezing rain"],
+    71:["🌨️","Light snow"], 73:["🌨️","Snow"], 75:["❄️","Heavy snow"],
+    77:["❄️","Snow grains"],
+    80:["🌦️","Rain showers"], 81:["🌧️","Rain showers"], 82:["⛈️","Violent rain"],
+    85:["🌨️","Snow showers"], 86:["❄️","Snow showers"],
+    95:["⛈️","Thunderstorm"], 96:["⛈️","Thunder & hail"], 99:["⛈️","Thunder & hail"]
+  };
+  const fmtTime = iso => new Date(iso).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false, timeZone:'Europe/London'});
+  const fmtDay = iso => new Date(iso).toLocaleDateString('en-GB',{weekday:'short', day:'2-digit', month:'short', timeZone:'Europe/London'});
+
+  async function loadWeather() {
+    const url = new URL('https://api.open-meteo.com/v1/forecast');
+    url.search = new URLSearchParams({
+      latitude: LAT, longitude: LON, timezone: 'Europe/London',
+      current: 'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m',
+      hourly: 'temperature_2m,apparent_temperature,precipitation_probability,weather_code',
+      daily: 'temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code',
+      wind_speed_unit: 'mph', precipitation_unit: 'mm'
+    });
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Weather fetch failed');
+    renderWeather(await res.json());
+  }
+
+  function renderWeather(data) {
+    document.getElementById('status').style.display = 'none';
+    document.getElementById('app').style.display = '';
+
+    const c = data.current;
+    const [emoji,label] = WMO[c.weather_code] || ["❓","—"];
+    now_emoji.textContent = emoji;
+    now_temp.textContent = Math.round(c.temperature_2m) + "°C";
+    now_desc.textContent = label;
+    now_feels.textContent = Math.round(c.apparent_temperature);
+    now_wind.textContent = Math.round(c.wind_speed_10m);
+    now_hum.textContent = Math.round(c.relative_humidity_2m);
+
+    const h = data.hourly;
+    const nowIdx = h.time.findIndex(t => t === c.time);
+    now_pop.textContent = (nowIdx >= 0 && h.precipitation_probability[nowIdx] != null) ? h.precipitation_probability[nowIdx] : '—';
+
+    const todayIdxs = h.time.map((t,i)=>({t:new Date(t),i})).filter(o=>{
+      const d = o.t, n = new Date();
+      return d.getFullYear()===n.getFullYear() && d.getMonth()===n.getMonth() && d.getDate()===n.getDate();
+    }).map(o=>o.i);
+    today_high.textContent = Math.round(Math.max(...todayIdxs.map(i=>h.temperature_2m[i])));
+    today_low.textContent  = Math.round(Math.min(...todayIdxs.map(i=>h.temperature_2m[i])));
+    today_rain.textContent = (data.daily.precipitation_sum?.[0] ?? '—');
+
+    const hoursEl = document.getElementById('hours');
+    hoursEl.innerHTML = '';
+    const start = Math.max(0, nowIdx);
+    const end = Math.min(h.time.length, start + 12);
+    for (let i=start; i<end; i++){
+      const [e,lbl] = WMO[h.weather_code[i]] || ["❓","—"];
+      const tile = document.createElement('div');
+      tile.className = 'tile';
+      tile.innerHTML = `
+        <h3>${fmtTime(h.time[i])}</h3>
+        <div style="font-size:28px;line-height:1">${e}</div>
+        <div class="muted" style="margin:6px 0">${lbl}</div>
+        <div><strong>${Math.round(h.temperature_2m[i])}°C</strong></div>
+        <div class="muted">Feels ${Math.round(h.apparent_temperature[i])}°C • Rain ${h.precipitation_probability[i] ?? '—'}%</div>
+      `;
+      hoursEl.appendChild(tile);
+    }
+
+    const daysEl = document.getElementById('days');
+    daysEl.innerHTML = '';
+    for (let i=0;i<Math.min(7, data.daily.time.length);i++){
+      const [e,lbl] = WMO[data.daily.weather_code[i]] || ["❓","—"];
+      const d = document.createElement('div');
+      d.className = 'tile';
+      d.innerHTML = `
+        <h3>${fmtDay(data.daily.time[i])}</h3>
+        <div class="big-emoji">${e}</div>
+        <div class="muted" style="margin:6px 0">${lbl}</div>
+        <div>High <strong>${Math.round(data.daily.temperature_2m_max[i])}°C</strong></div>
+        <div class="muted">Low ${Math.round(data.daily.temperature_2m_min[i])}°C • Rain ${data.daily.precipitation_sum?.[i] ?? '—'} mm</div>
+      `;
+      daysEl.appendChild(d);
+    }
+  }
+
+  loadWeather().catch(err=>{
+    console.error(err);
+    document.getElementById('status').style.display = 'none';
+    const e = document.createElement('div');
+    e.className = 'error'; e.textContent = 'Couldn’t load weather right now.';
+    document.querySelector('#tab-weather main, #tab-weather').appendChild(e);
+  });
+
+  // ----- RADAR (Leaflet + RainViewer) -----
+  let map, radarLayer, frameTimes = [], frameIdx = 0, animTimer;
+  async function initMap(){
+    if (map) return;
+    const leafletScript = document.createElement('script');
+    leafletScript.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    leafletScript.integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
+    leafletScript.crossOrigin="anonymous";
+    leafletScript.onload = setupMap;
+    document.body.appendChild(leafletScript);
+  }
+  function setupMap(){
+    map = L.map('map', { zoomControl: true, zoomSnap: 0.5 }).setView([51.318, -2.208], 9);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 12, attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+    L.circleMarker([51.318,-2.208], {radius:6}).addTo(map).bindPopup('BA14');
+    loadRadar();
+  }
+  async function loadRadar(){
+    // Get list of available frames
+    const metaUrl = 'https://api.rainviewer.com/public/weather-maps.json';
+    const meta = await (await fetch(metaUrl)).json();
+    const past = meta.radar.past.slice(-6); // last ~1 hour
+    frameTimes = past.map(f => f.time);
+    addRadarLayer(frameTimes[frameTimes.length-1]);
+    animateRadar();
+  }
+  function addRadarLayer(ts){
+    if (radarLayer) map.removeLayer(radarLayer);
+    const template = 'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/2/1_1.png';
+    radarLayer = L.tileLayer(template.replace('{time}', ts), {
+      opacity: 0.7, attribution: 'Radar © RainViewer'
+    });
+    radarLayer.addTo(map);
+  }
+  function animateRadar(){
+    clearInterval(animTimer);
+    animTimer = setInterval(()=>{
+      frameIdx = (frameIdx + 1) % frameTimes.length;
+      addRadarLayer(frameTimes[frameIdx]);
+    }, 600);
+  }
+
+  // Register SW
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(console.error));
+  }
+</script>
+
+<!-- Alerts config and logic in separate files -->
+<script src="alerts-config.js"></script>
+<script src="alerts.js"></script>
+</body>
+</html>
